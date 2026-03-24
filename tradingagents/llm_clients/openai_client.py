@@ -7,16 +7,12 @@ from .base_client import BaseLLMClient, normalize_content
 from .validators import validate_model
 
 
-class NormalizedChatOpenAI(ChatOpenAI):
-    """ChatOpenAI with normalized content output.
-
-    The Responses API returns content as a list of typed blocks
-    (reasoning, text, etc.). This normalizes to string for consistent
-    downstream handling.
-    """
+class MinimaxChatOpenAI(ChatOpenAI):
+    """ChatOpenAI subclass for Minimax with Chat Completions API."""
 
     def invoke(self, input, config=None, **kwargs):
         return normalize_content(super().invoke(input, config, **kwargs))
+
 
 # Kwargs forwarded from user config to ChatOpenAI
 _PASSTHROUGH_KWARGS = (
@@ -33,13 +29,7 @@ _PROVIDER_CONFIG = {
 
 
 class OpenAIClient(BaseLLMClient):
-    """Client for OpenAI, Ollama, OpenRouter, and xAI providers.
-
-    For native OpenAI models, uses the Responses API (/v1/responses) which
-    supports reasoning_effort with function tools across all model families
-    (GPT-4.1, GPT-5). Third-party compatible providers (xAI, OpenRouter,
-    Ollama) use standard Chat Completions.
-    """
+    """Client for OpenAI, Ollama, OpenRouter, xAI, and Minimax providers."""
 
     def __init__(
         self,
@@ -54,6 +44,15 @@ class OpenAIClient(BaseLLMClient):
     def get_llm(self) -> Any:
         """Return configured ChatOpenAI instance."""
         llm_kwargs = {"model": self.model}
+
+        # Check if this is Minimax
+        if self.provider == "minimax" or (self.base_url and "minimax" in self.base_url.lower()):
+            # Use Minimax Chat Completions API
+            # Endpoint: https://api.minimax.io/v1/text/chatcompletion_v2
+            llm_kwargs["base_url"] = "https://api.minimax.io/v1"
+            llm_kwargs["model"] = "minimax-m2.7"
+            llm_kwargs["api_key"] = os.environ.get("OPENAI_API_KEY", os.environ.get("MINIMAX_API_KEY", ""))
+            return MinimaxChatOpenAI(**llm_kwargs)
 
         # Provider-specific base URL and auth
         if self.provider in _PROVIDER_CONFIG:
@@ -73,12 +72,11 @@ class OpenAIClient(BaseLLMClient):
             if key in self.kwargs:
                 llm_kwargs[key] = self.kwargs[key]
 
-        # Native OpenAI: use Responses API for consistent behavior across
-        # all model families. Third-party providers use Chat Completions.
+        # Native OpenAI: use Responses API for consistent behavior
         if self.provider == "openai":
             llm_kwargs["use_responses_api"] = True
 
-        return NormalizedChatOpenAI(**llm_kwargs)
+        return ChatOpenAI(**llm_kwargs)
 
     def validate_model(self) -> bool:
         """Validate model for the provider."""
