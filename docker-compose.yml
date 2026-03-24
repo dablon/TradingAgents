@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  tradingagents:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: tradingagents
+    volumes:
+      - ./results:/app/results
+      - ./dataflows:/app/dataflows
+    env_file:
+      - .env
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - llm_provider=${LLM_PROVIDER:-openai}
+      - backend_url=${BACKEND_URL:-https://api.minimax.chat/v1}
+      - deep_think_llm=${DEEP_THINK_LLM:-miniMax-Text-01}
+      - quick_think_llm=${QUICK_THINK_LLM:-miniMax-Text-01}
+    stdin_open: true
+    tty: true
+    command: python -m cli.main
